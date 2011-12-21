@@ -23,7 +23,7 @@ class Discogs:
         discogs.user_agent = 'iTunes-Discogs/1.0 +http://jdolan.dyndns.org'
         
     def get_release_by_artist(self, artist, title):
-        '''Attempts to resolve the specified track by exact artist lookup.'''
+        'Attempts to resolve the specified track by exact artist lookup.'
         try:
             releases = discogs.Artist(artist).releases
         except discogs.HTTPError:
@@ -41,7 +41,7 @@ class Discogs:
         return best_release
     
     def get_release_by_search(self, artist, title):
-        '''Attempts to resolve the specified track by fuzzy search.'''
+        'Attempts to resolve the specified track by fuzzy search.'
         query = ('%s %s' % (artist, title)).lower()
         query = ''.join(c for c in query if c.isalnum() or c.isspace())
         
@@ -56,7 +56,7 @@ class Discogs:
             return None
         
     def get_release(self, artist, title):
-        '''Primary entry point for resolving releases for tracks.'''
+        'Primary entry point for resolving releases for tracks.'
         release = self.get_release_by_search(artist, title)
         
         if not release:
