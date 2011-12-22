@@ -11,16 +11,18 @@ class Release:
     def __init__(self, release):
         self.release = release
         
-    def __getattribute__(self, name):
-        return self.release.name
+    def __getattr__(self, name):
+        return getattr(self.release, name)
     
     def __str__(self):
-        return '%s: %s (%s)' % (self.release._id, self.release.title, self.release.data['year'])
+        return '%s: %s (%s)' % (self._id, self.title, self.data['year'])
                      
 class Discogs:
     
     def __init__(self):
         discogs.user_agent = 'iTunes-Discogs/1.0 +http://jdolan.dyndns.org'
+        
+        self.releases = {}
         
     def get_release_by_artist(self, artist, title):
         'Attempts to resolve the specified track by exact artist lookup.'
@@ -67,7 +69,8 @@ class Discogs:
                 release = release.master
         
         if release:
-            return Release(release)
+            release = Release(release)
+            self.releases[release._id] = release
         
-        return None
+        return release
         

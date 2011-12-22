@@ -2,10 +2,13 @@
 from os.path import expanduser
 from plistlib import readPlist
 
+import subprocess
+
 class Track:
 
     def __init__(self, track):
         self.TrackID = track['Track ID']
+        self.PersistentID = track['Persistent ID']
         
         self.Artist = 'Unknown'
         if 'Artist' in track:
@@ -23,11 +26,7 @@ class Track:
         if 'Year' in track:
             self.Year = track['Year']
             
-    def is_incomplete(self):
-        if self.Genre != 'Mixed':
-            if self.Artist != 'Unknown' and self.Name != 'Untitled':
-                return self.Year is None
-        return False
+        self.release = None
             
     def __str__(self):
         return 'Track %s: %s - %s' % (self.TrackID, self.Artist, self.Name)
@@ -36,6 +35,7 @@ class Playlist:
 
     def __init__(self, playlist):
         self.PlaylistID = playlist['Playlist ID']
+        self.PlaylistPersistentID = playlist['Playlist Persistent ID']
         
         self.Name = 'Unnamed'
         if 'Name' in playlist:
@@ -51,7 +51,7 @@ class Playlist:
     
 class Library:
 
-    def __init__(self, library=None, playlist=None):
+    def __init__(self, library=None):
         if not library:
             library = expanduser('~/Music/iTunes/iTunes Music Library.xml')
         
@@ -66,3 +66,22 @@ class Library:
         for p in plist['Playlists']:
             playlist = Playlist(p)
             self.playlists[playlist.PlaylistID] = playlist
+            
+class iTunes:
+    
+    def __init__(self, library=None):
+        self.library = Library(library)
+        
+        self.bridge = subprocess.Popen(['osascript', '-'], shell=False, stdin=subprocess.PIPE)
+        
+    def tell(self, cmd):
+        self.bridge.communicate(
+            """
+            tell application "itunes"
+                %s
+            end tell
+            """
+        )
+        
+    def __del__(self):
+        self.bridge.terminate()
