@@ -1,2 +1,4 @@
+build
 discogs_client*
+dist
 *.pyc
