@@ -33,7 +33,7 @@ class TrackView(gtk.TreeView):
         
         if not release:
             track = Window.instance.controller.get_track(tid)
-            Window.instance.controller.process_track(track, self.load_track_callback, it)
+            Window.instance.controller.get_release(track, self.load_track_callback, it)
         
     def load_track_callback(self, track, release, it):
         self.get_model().set_value(it, 3, release._id)

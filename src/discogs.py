@@ -14,6 +14,10 @@ class Release:
     def __getattr__(self, name):
         return getattr(self.release, name)
     
+    def __getstate__(self):
+        # TODO: Trim to only what we need.
+        pass
+    
     def __str__(self):
         return '%s: %s (%s)' % (self._id, self.title, self.data['year'])
                      
@@ -21,9 +25,7 @@ class Discogs:
     
     def __init__(self):
         discogs.user_agent = 'iTunes-Discogs/1.0 +http://jdolan.dyndns.org'
-        
-        self.releases = {}
-        
+                
     def get_release_by_artist(self, artist, title):
         'Attempts to resolve the specified track by exact artist lookup.'
         try:
@@ -64,13 +66,11 @@ class Discogs:
         if not release:
             release = self.get_release_by_artist(artist, title)
            
-        if isinstance(release, discogs.Release): 
-            if release.master:
-                release = release.master
-        
         if release:
-            release = Release(release)
-            self.releases[release._id] = release
+            if isinstance(release, discogs.Release) and release.master:
+                release = release.master
+                    
+            return Release(release)
         
-        return release
+        return None
         
