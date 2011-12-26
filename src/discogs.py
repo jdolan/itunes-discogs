@@ -2,27 +2,41 @@ from difflib import SequenceMatcher
 import discogs_client as discogs
     
 class Matcher(SequenceMatcher):
-    
+    'A sequence matcher for determining best-match for track names.'
     def __init__(self, s1, s2):
         SequenceMatcher.__init__(self, None, s1, s2)
 
 class Release:
-    
+    'A proxy class for discogs_client.Release providing easy serialization.'
     def __init__(self, release):
         self.release = release
+    
+    @property    
+    def year(self):
+        return self.data['year']
         
     def __getattr__(self, name):
         return getattr(self.release, name)
     
     def __getstate__(self):
-        # TODO: Trim to only what we need.
-        pass
+        return {
+            '_id' : self._id,
+            '_cached_response.content' : self._cached_response.content
+        }
     
+    def __setstate__(self, d):
+        class Response:
+            def __init__(self, content):
+                self.status_code = 200
+                self.content = content
+        self.release = discogs.Release(d['_id'])
+        self.release._cached_response = Response(d['_cached_response.content'])
+        
     def __str__(self):
-        return '%s: %s (%s)' % (self._id, self.title, self.data['year'])
+        return '%s: %s (%s)' % (self._id, self.title, self.year)
                      
 class Discogs:
-    
+    'Provides release lookup based on artist and title.'
     def __init__(self):
         discogs.user_agent = 'iTunes-Discogs/1.0 +http://jdolan.dyndns.org'
                 

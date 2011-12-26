@@ -1,3 +1,4 @@
+from itunes import Playlist
 import gtk
 
 class TrackView(gtk.TreeView):
@@ -25,7 +26,10 @@ class TrackView(gtk.TreeView):
         self.connect('cursor-changed', self.load_track)
                         
     def add_track(self, track):
-        self.get_model().append((track.TrackID, track.Artist, track.Name, None))
+        rid = None
+        if track.release:
+            rid = track.release._id
+        self.get_model().append((track.TrackID, track.Artist, track.Name, rid))
         
     def load_track(self, view):
         model, it = self.get_selection().get_selected()
@@ -125,7 +129,8 @@ class Window(gtk.Window):
         
         self.add(vbox)
         
-        for playlist in self.controller.get_playlists().values():
+        playlists = set(self.controller.get_playlists().values())
+        for playlist in sorted(playlists, Playlist.compare):
             self.playlists.add_playlist(playlist)
         
         self.show_all()

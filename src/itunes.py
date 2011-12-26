@@ -49,6 +49,10 @@ class Playlist:
     def __str__(self):
         return 'Playlist %s: %s' % (self.PlaylistID, self.Name)
     
+    @staticmethod
+    def compare(p1, p2):
+        return cmp(p1.Name, p2.Name)
+        
 class Library:
 
     def __init__(self, library=None):
@@ -59,13 +63,25 @@ class Library:
         
         self.tracks = {}
         for t in plist['Tracks'].values():
+            
+            if t['Track Type'] != 'File':
+                continue
+            
             track = Track(t)
+            
             self.tracks[track.TrackID] = track
+            self.tracks[track.PersistentID] = track
              
         self.playlists = {}       
         for p in plist['Playlists']:
+            
+            if 'Distinguished Kind' in p:
+                continue
+            
             playlist = Playlist(p)
+            
             self.playlists[playlist.PlaylistID] = playlist
+            self.playlists[playlist.PlaylistPersistentID] = playlist
             
 class iTunes:
     

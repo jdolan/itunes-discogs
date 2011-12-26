@@ -9,19 +9,17 @@ from view import Window
 import argparse
 import gobject
 
+
 class Controller:
-    
+    'The controller implements all application logic.'
     def __init__(self, arguments):
         self.arguments = arguments
         
+        self.home = self._get_home(arguments.home)
+        
         self.itunes, self.discogs = iTunes(arguments.library), Discogs()
         
-        self.home = path.expanduser('~/.iTunes-Discogs')
-        
-        if not path.exists(self.home):
-            mkdir(self.home)
-        
-        self.model = Model(arguments.database)
+        self.model = Model(arguments.database, self.get_tracks())
         
         if arguments.cli:
             if not arguments.playlist:
@@ -35,6 +33,15 @@ class Controller:
             Window(self)
             
         self.shutdown()
+        
+    def _get_home(self, home=None):
+        if not home:
+            home = path.expanduser('~/.iTunes-Discogs')
+        
+        if not path.exists(home):
+            mkdir(home)
+            
+        return home        
     
     def update_track(self, track, fields):
         cmd = 'set t to track 1 of playlist "Library" whose persistent ID is "%s"' % track.PersistentID
@@ -44,6 +51,7 @@ class Controller:
         #self.itunes.tell(cmd)
         
     def _get_release(self, track, callback=None, data=None):
+        'Performs the grunt work of resolving releases for tracks.'
         release = self.discogs.get_release(track.Artist, track.Name)
         if release:
             self.set_bundle(track.PersistentID, release)
@@ -53,6 +61,7 @@ class Controller:
             return release
             
     def get_release(self, track, callback=None, data=None):
+        'Common entry point for resolving releases for tracks.'
         if callback:
             Thread(target=self._get_release, args=(track, callback, data)).start()
         else:
@@ -100,6 +109,9 @@ if __name__ == '__main__':
     )
     parser.add_argument('-d', action='store', dest='database',
         help='The database file to read and write release associations to.'
+    )
+    parser.add_argument('-g', action='store', dest='home',
+        help='The home directory to store configuration and databases.'
     )
     parser.add_argument('-l', action='store', dest='library',
         help='The iTunes Library filename. If omitted, the default location for the current user is tried.',
