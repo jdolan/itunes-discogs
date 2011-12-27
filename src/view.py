@@ -3,40 +3,6 @@ from itunes import Playlist
 import config
 import gtk
 import pango
-    
-class Menu(gtk.MenuBar):
-    'The main menu bar.'
-    def __init__(self):
-        super(Menu, self).__init__()
-        
-        menu = gtk.Menu()
-        
-        item = gtk.MenuItem('Preferences')
-        item.connect('activate', Window.instance.preferences.show_all)
-        
-        menu.append(item)
-        
-        item = gtk.MenuItem('Quit')
-        item.connect('activate', Window.instance.destroy)
-        
-        menu.append(item)
-        
-        item = gtk.MenuItem(config.NAME)
-        item.set_submenu(menu)
-        
-        self.add(item)
-        
-        menu = gtk.Menu()
-        
-        item = gtk.MenuItem('About')
-        item.connect('activate', Window.instance.about.show_all)
-        
-        menu.append(item)
-        
-        item = gtk.MenuItem('Help')
-        item.set_submenu(menu)
-        
-        self.add(item)
         
 class About(gtk.AboutDialog):
     'The about dialog.'
@@ -57,38 +23,54 @@ class Preferences(gtk.Dialog):
         'The fields view.'
         def __init__(self):
             super(Preferences.Fields, self).__init__(gtk.ListStore(str, str, str, str))
+            
             self.modify_font(pango.FontDescription('8'))
             self.set_rules_hint(True)
             self.set_size_request(600, 280)
                         
-            field = gtk.TreeViewColumn('Field', gtk.CellRendererText(), text=0)
-            self.append_column(field)
+            column = gtk.TreeViewColumn('Field', gtk.CellRendererText(), text=0)
+            self.append_column(column)
             
             renderer = gtk.CellRendererText()
             renderer.set_property('editable', True)
+            renderer.connect('edited', self.edit, 1)
             
-            source = gtk.TreeViewColumn('Source', renderer, text=1)
-            self.append_column(source)
+            column = gtk.TreeViewColumn('Source', renderer, text=1)
+            self.append_column(column)
             
-            target = gtk.TreeViewColumn('Target', renderer, text=2)
-            self.append_column(target)
+            renderer = gtk.CellRendererText()
+            renderer.set_property('editable', True)
+            renderer.connect('edited', self.edit, 2)
+            
+            column = gtk.TreeViewColumn('Target', renderer, text=2)
+            self.append_column(column)
         
             actions = gtk.ListStore(str)
             for action in Field.actions:
                 actions.append((action,))
             
-            combo = gtk.CellRendererCombo()
-            combo.set_property('editable', True)
-            combo.set_property('has-entry', False)
-            combo.set_property('model', actions)
-            combo.set_property('text-column', 0)
+            renderer = gtk.CellRendererCombo()
+            renderer.set_property('editable', True)
+            renderer.set_property('has-entry', False)
+            renderer.set_property('model', actions)
+            renderer.set_property('text-column', 0)
+            renderer.connect('edited', self.edit, 3)
             
-            action = gtk.TreeViewColumn('Action', combo, text=3)
-            self.append_column(action)
+            column = gtk.TreeViewColumn('Action', renderer, text=3)
+            self.append_column(column)
             
+            self.set_fields()
+            
+        def edit(self, renderer, row, text, column):
+            self.get_model()[row][column] = text
+             
+        def get_fields(self):
+            return [Field(row[0], row[1], row[2], row[3]) for row in self.get_model()]
+        
+        def set_fields(self):
+            self.get_model().clear()
             for field in Window.instance.controller.config.fields:
-                row = (field.name, field.source, field.target, field.action)
-                self.get_model().append(row)
+                self.get_model().append((field.name, field.source, field.target, field.action))
         
     def __init__(self):
         flags = gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT
@@ -113,7 +95,7 @@ class Preferences(gtk.Dialog):
         scrollable.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrollable.add(self.fields)
         
-        box.pack_start(scrollable)    
+        box.pack_start(scrollable)
         
         notebook.append_page(box, gtk.Label('Fields'))
         
@@ -126,25 +108,58 @@ class Preferences(gtk.Dialog):
         
     def response(self, dialog, response):
         if response == gtk.RESPONSE_OK:
-            it = self.fields.get_model().get_iter_first()
-            print it
+            config = Window.instance.controller.config
+            config.fields = self.fields.get_fields()
+            
         self.hide()
          
 class Window(gtk.Window):
     'The main window. We use a singleton pattern for convenience.'
     instance = None
     
+    class Menu(gtk.MenuBar):
+        'The main menu bar.'
+        def __init__(self):
+            super(Window.Menu, self).__init__()
+            
+            menu = gtk.Menu()
+            
+            item = gtk.MenuItem('Preferences')
+            item.connect('activate', Window.instance.preferences.show_all)
+            
+            menu.append(item)
+            
+            item = gtk.MenuItem('Quit')
+            item.connect('activate', Window.instance.destroy)
+            
+            menu.append(item)
+            
+            item = gtk.MenuItem(config.NAME)
+            item.set_submenu(menu)
+            
+            self.add(item)
+            
+            menu = gtk.Menu()
+            
+            item = gtk.MenuItem('About')
+            item.connect('activate', Window.instance.about.show_all)
+            
+            menu.append(item)
+            
+            item = gtk.MenuItem('Help')
+            item.set_submenu(menu)
+            
+            self.add(item)
+    
     class Playlists(gtk.TreeView):
         'The playlists tree view.'
         def __init__(self):
             super(Window.Playlists, self).__init__(gtk.ListStore(int, str))
+            
             self.modify_font(pango.FontDescription('8'))
-            
-            renderer = gtk.CellRendererText()
-            
-            name = gtk.TreeViewColumn('Playlists', renderer, text=1)
-            name.set_sort_column_id(1)
-            self.append_column(name)
+                        
+            column = gtk.TreeViewColumn('Playlists', gtk.CellRendererText(), text=1)
+            self.append_column(column)
             
             self.connect('cursor-changed', self.load_playlist)
                     
@@ -172,29 +187,29 @@ class Window(gtk.Window):
             
             renderer = gtk.CellRendererText()
             
-            artist = gtk.TreeViewColumn('Artist', renderer, text=1)
-            artist.set_min_width(200)
-            artist.set_resizable(True)
-            artist.set_sort_column_id(1)
-            self.append_column(artist)
+            column = gtk.TreeViewColumn('Artist', renderer, text=1)
+            column.set_min_width(200)
+            column.set_resizable(True)
+            column.set_sort_column_id(1)
+            self.append_column(column)
             
-            name = gtk.TreeViewColumn('Name', renderer, text=2)
-            name.set_min_width(200)
-            name.set_resizable(True)
-            name.set_sort_column_id(2)
-            self.append_column(name)
+            column = gtk.TreeViewColumn('Name', renderer, text=2)
+            column.set_min_width(200)
+            column.set_resizable(True)
+            column.set_sort_column_id(2)
+            self.append_column(column)
             
             renderer = gtk.CellRendererText()
             renderer.set_property('foreground', 'blue')
             renderer.set_property('underline', pango.UNDERLINE_SINGLE)
             
-            release = gtk.TreeViewColumn('Release', renderer, text=3)
-            release.set_min_width(200)
-            release.set_resizable(True)
-            release.set_sort_column_id(3)
-            self.append_column(release)
+            column = gtk.TreeViewColumn('Release', renderer, text=3)
+            column.set_min_width(200)
+            column.set_resizable(True)
+            column.set_sort_column_id(3)
+            self.append_column(column)
             
-            self.connect('cursor-changed', self.load_track)
+            self.connect('cursor-changed', self.get_release)
                             
         def add_track(self, track):
             rel = None
@@ -202,17 +217,21 @@ class Window(gtk.Window):
                 rel = str(track.release)
             self.get_model().append((track.TrackID, track.Artist, track.Name, rel))
             
-        def load_track(self, view):
+        def get_release(self, view):
             model, it = self.get_selection().get_selected()
-            tid, release = model.get_value(it, 0), model.get_value(it, 3)
+            tid = model.get_value(it, 0)
             
-            if not release:
-                track = Window.instance.controller.get_track(tid)
-                Window.instance.controller.get_release(track, self.load_track_callback, it)
+            track = Window.instance.controller.get_track(tid)
             
-        def load_track_callback(self, track, release, it):
+            if not track.release:
+                Window.instance.status.set_status('Resolving release for %s..' % track)
+                Window.instance.controller.get_release(track, self.get_release_cb, it)
+            
+        def get_release_cb(self, track, release, it):
             if not release:
+                Window.instance.status.set_status('%s Not found' % track)
                 return
+            
             self.get_model().set_value(it, 3, str(release))
             Window.instance.status.set_status(str(release))
     
@@ -220,10 +239,8 @@ class Window(gtk.Window):
         'The status bar.'
         def __init__(self):
             super(Window.Status, self).__init__()
-                  
-            self.status = gtk.Label('')
-            self.status.set_padding(2, 2)
-    
+            
+            self.status = gtk.Label('')    
             self.pack_start(self.status)
                                             
         def set_status(self, text):
@@ -246,8 +263,8 @@ class Window(gtk.Window):
         vbox = gtk.VBox()
         hbox = gtk.HBox()
         
-        self.menu = Menu()
-        vbox.pack_start(self.menu, False)        
+        self.menu = Window.Menu()
+        vbox.pack_start(self.menu, False)
 
         self.playlists = Window.Playlists()
         
@@ -272,7 +289,7 @@ class Window(gtk.Window):
         vbox.pack_start(gtk.HSeparator())
         
         self.status = Window.Status()
-        vbox.pack_end(self.status, False)
+        vbox.pack_end(self.status, False, False, 2)
         
         self.add(vbox)
         
