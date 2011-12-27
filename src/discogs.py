@@ -38,19 +38,19 @@ class Discogs:
     'Provides release lookup based on artist and title.'
     def __init__(self):
         discogs.user_agent = 'iTunes-Discogs/1.0 +http://jdolan.dyndns.org'
-        self.junk = ['feat', 'featuring', 'ft', 'original', 'mix', 'remix']
+        self.junk = ['a', 'feat', 'featuring', 'ft', 'original', 'pres', 'presents', 'mix', 'remix']
                 
     def get_release(self, artist, title):
         'Attempts to resolve the specified track by fuzzy search.'        
-        query = ('%s %s' % (artist, title)).lower()
+        query = ('%s %s' % (artist, title)).lower().replace('\'s', '')
         query = ''.join(c for c in query if c.isalnum() or c.isspace())
         
         terms = []
         for term in query.split(' '):
-            if term not in self.junk:
+            if term and term not in self.junk:
                 terms.append(term)
                 
-        query = ' '.join(terms)
+        query = ' '.join(terms[:5])
                 
         try:
             results = discogs.Search(query).results()

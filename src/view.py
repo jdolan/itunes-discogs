@@ -59,6 +59,7 @@ class Preferences(gtk.Dialog):
             super(Preferences.Fields, self).__init__(gtk.ListStore(str, str, str, str))
             self.modify_font(pango.FontDescription('8'))
             self.set_rules_hint(True)
+            self.set_size_request(600, 280)
                         
             field = gtk.TreeViewColumn('Field', gtk.CellRendererText(), text=0)
             self.append_column(field)
@@ -95,7 +96,7 @@ class Preferences(gtk.Dialog):
         
         super(Preferences, self).__init__('Preferences', Window.instance, flags, buttons)
         
-        self.vbox.set_size_request(450, 300)
+        self.vbox.set_size_request(600, 300)
         
         notebook = gtk.Notebook()        
         notebook.set_tab_pos(gtk.POS_TOP)
@@ -128,8 +129,6 @@ class Preferences(gtk.Dialog):
             it = self.fields.get_model().get_iter_first()
             print it
         self.hide()
-        
-
          
 class Window(gtk.Window):
     'The main window. We use a singleton pattern for convenience.'
