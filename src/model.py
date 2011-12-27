@@ -1,27 +1,32 @@
 from os import path
-from posixpath import expanduser
 import cPickle
+import gzip
 
 class Model:
     'Provides simple key-value pair persistence.'
-    def __init__(self, database=None, tracks={}):
+    def __init__(self, config, database=None, tracks={}):
+        self.config = config
+        
         if not database:
-            database = expanduser('~/.iTunes-Discogs/db')
+            database = self.default_database()
                
         self.bundles = {}
         
         if path.exists(database): 
-            with open(database, 'r') as db:
+            with gzip.open(database, 'r') as db:
                 self.bundles = cPickle.load(db)
         
         for (bid, data) in self.bundles.items():
             if bid in tracks:
                 tracks[bid].release = data
+                
+    def default_database(self):
+        return '%s/db' % self.config.home
                         
     def flush(self, database=None):
         if not database:
-            database = expanduser('~/.iTunes-Discogs/db')
+            database = self.default_database()
             
-        with open(database, 'w') as db:
+        with gzip.open(database, 'w') as db:
             cPickle.dump(self.bundles, db)
             

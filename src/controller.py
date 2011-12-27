@@ -1,25 +1,28 @@
 #!/usr/bin/python
 
+from config import Config
 from discogs import Discogs
 from itunes import iTunes
 from model import Model
-from os import mkdir, path
-from threading import Thread
 from view import Window
 import argparse
+import config
 import gobject
-
+import threading
+import time
 
 class Controller:
     'The controller implements all application logic.'
     def __init__(self, arguments):
         self.arguments = arguments
         
-        self.home = self._get_home(arguments.home)
+        self.config = Config(arguments.home)
+                
+        self.itunes = iTunes(arguments.library)
         
-        self.itunes, self.discogs = iTunes(arguments.library), Discogs()
+        self.model = Model(self.config, arguments.database, self.get_tracks())
         
-        self.model = Model(arguments.database, self.get_tracks())
+        self.discogs = Discogs()
         
         if arguments.cli:
             if not arguments.playlist:
@@ -32,16 +35,7 @@ class Controller:
             gobject.threads_init()
             Window(self)
             
-        self.shutdown()
-        
-    def _get_home(self, home=None):
-        if not home:
-            home = path.expanduser('~/.iTunes-Discogs')
-        
-        if not path.exists(home):
-            mkdir(home)
-            
-        return home        
+        self.shutdown()       
     
     def update_track(self, track, fields):
         cmd = 'set t to track 1 of playlist "Library" whose persistent ID is "%s"' % track.PersistentID
@@ -55,23 +49,29 @@ class Controller:
         release = self.discogs.get_release(track.Artist, track.Name)
         if release:
             self.set_bundle(track.PersistentID, release)
-        if callback:
-            gobject.idle_add(callback, track, release, data)
-        else:
-            return release
+        return release
+        
+    def _get_release_async(self, track, callback, data):
+        'Threaded method for asynchronous release resolution.'
+        while threading.active_count() > 5:
+            time.sleep(0.1)
+            
+        release = self._get_release(track)
+        gobject.idle_add(callback, track, release, data)
             
     def get_release(self, track, callback=None, data=None):
         'Common entry point for resolving releases for tracks.'
         if callback:
-            Thread(target=self._get_release, args=(track, callback, data)).start()
+            args = (track, callback, data)
+            threading.Thread(target=self._get_release_async, args=args).start()
         else:
             return self._get_release(track)
             
     def process_playlist(self, playlist):
         for tid in playlist.Items:
             track = self.get_track(tid)
-            if track.PersistentID not in self.get_bundles():
-                self.get_release(self.get_track(tid))
+            if not track.release:
+                track.release = self.get_release(track)
            
     def shutdown(self):
         self.model.flush(self.arguments.database)
@@ -102,7 +102,7 @@ class Controller:
         
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description = 'Enrich your iTunes library with Discogs', version = '1.0'
+        description = 'Enrich your iTunes library with Discogs', version = config.VERSION
     )
     parser.add_argument('-c', action='store', dest='cli',
         help='Run this program at the command line. Do not start the GUI.'
