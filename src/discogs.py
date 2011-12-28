@@ -38,7 +38,7 @@ class Discogs:
     'Provides release lookup based on artist and title.'
     def __init__(self):
         discogs.user_agent = 'iTunes-Discogs/1.0 +http://jdolan.dyndns.org'
-        self.junk = ['a', 'feat', 'featuring', 'ft', 'original', 'pres', 'presents', 'mix', 'remix']
+        self.junk = ['a', 'feat', 'featuring', 'ft', 'original', 'pres', 'presents', 'mix', 'remix', 'vs']
                 
     def get_release(self, artist, title):
         'Attempts to resolve the specified track by fuzzy search.'        

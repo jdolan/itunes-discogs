@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+from Queue import Queue
 from config import Config
 from discogs import Discogs
 from itunes import iTunes
@@ -13,17 +14,33 @@ import time
 
 class Controller:
     'The controller implements all application logic.'
+    
+    class Worker(threading.Thread):
+        'The worker thread enabling asynchronous requests.'
+        def __init__(self, controller):
+            gobject.threads_init()
+            super(Controller.Worker, self).__init__()
+            self.controller = controller
+            self.daemon, self.live, self.work = True, True, True
+            self.start()
+            
+        def run(self):
+            while self.live:
+                while self.work:
+                    (track, callback, data) = self.controller.queue.get()
+                    release = self.controller._get_release(track)
+                    gobject.idle_add(callback, track, release, data)
+                time.sleep(0.1)
+                
     def __init__(self, arguments):
+        'Main entry point for iTunes-Discogs.'
         self.arguments = arguments
         
-        self.config = Config(arguments.home)
-                
+        self.config = Config(arguments.home)      
         self.itunes = iTunes(arguments.library)
-        
         self.model = Model(self.config, arguments.database, self.get_tracks())
-        
-        self.discogs = Discogs()
-        
+        self.discogs, self.queue = Discogs(), Queue()
+                
         if arguments.cli:
             if not arguments.playlist:
                 arguments.playlist = 'Library'
@@ -32,12 +49,13 @@ class Controller:
                 if playlist.Name == arguments.playlist:
                     self.process_playlist(playlist)
         else:
-            gobject.threads_init()
+            self.worker = Controller.Worker(self)
             Window(self)
             
-        self.shutdown()       
+        self.shutdown()
     
     def update_track(self, track, fields):
+        'Back release information into iTunes.'
         cmd = 'set t to track 1 of playlist "Library" whose persistent ID is "%s"' % track.PersistentID
         cmd += ''.join(['set %s of t to %s' % (f, v) for (f, v) in fields])
         
@@ -45,35 +63,38 @@ class Controller:
         #self.itunes.tell(cmd)
         
     def _get_release(self, track, callback=None, data=None):
-        'Performs the grunt work of resolving releases for tracks.'
+        'Dispatch release resolution, storing results in the database.'
         release = self.discogs.get_release(track.Artist, track.Name)
         if release:
             self.set_bundle(track.PersistentID, release)
         return release
         
-    def _get_release_async(self, track, callback, data):
-        'Threaded method for asynchronous release resolution.'
-        while threading.active_count() > 5:
-            time.sleep(0.1)
-            
-        release = self._get_release(track)
-        gobject.idle_add(callback, track, release, data)
-            
     def get_release(self, track, callback=None, data=None):
-        'Common entry point for resolving releases for tracks.'
+        'Common entry point for resolving releases information.'
         if callback:
-            args = (track, callback, data)
-            threading.Thread(target=self._get_release_async, args=args).start()
+            self.queue.put((track, callback, data))
+            self.worker.work = True
         else:
             return self._get_release(track)
             
     def process_playlist(self, playlist):
+        'Resolve releases for the specified playlist.'
         for tid in playlist.Items:
             track = self.get_track(tid)
             if not track.release:
                 track.release = self.get_release(track)
+                
+    def cancel(self):
+        'Cancel all pending asynchronous requests.'
+        self.worker.work = False
+        while not self.queue.empty():
+            self.queue.get()
            
     def shutdown(self):
+        'Shutdown the worker thread and flush the database.'
+        self.worker.live = self.worker.work = False
+        self.worker.join()
+        
         self.model.flush(self.arguments.database)
         
     def get_tracks(self):

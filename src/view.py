@@ -124,12 +124,12 @@ class Window(gtk.Window):
             
             menu = gtk.Menu()
             
-            item = gtk.MenuItem('Preferences')
+            item = gtk.MenuItem('_Preferences')
             item.connect('activate', Window.instance.preferences.show_all)
             
             menu.append(item)
             
-            item = gtk.MenuItem('Quit')
+            item = gtk.MenuItem('_Quit')
             item.connect('activate', Window.instance.destroy)
             
             menu.append(item)
@@ -141,7 +141,7 @@ class Window(gtk.Window):
             
             menu = gtk.Menu()
             
-            item = gtk.MenuItem('About')
+            item = gtk.MenuItem('_About')
             item.connect('activate', Window.instance.about.show_all)
             
             menu.append(item)
@@ -150,6 +150,46 @@ class Window(gtk.Window):
             item.set_submenu(menu)
             
             self.add(item)
+            
+    class Controls(gtk.HBox):
+        'The primary control buttons.'
+        def __init__(self):
+            super(Window.Controls, self).__init__()
+                        
+            button = gtk.Button('_Resolve')
+            button.set_image(gtk.image_new_from_stock(gtk.STOCK_CONNECT, gtk.ICON_SIZE_BUTTON))
+            button.set_size_request(64, 48)
+            button.set_image_position(gtk.POS_TOP)
+            self.pack_start(button, False)
+            
+            button.connect('clicked', self.resolve)
+            
+            button = gtk.Button('Cancel', gtk.STOCK_CANCEL)
+            button.set_size_request(64, 48)
+            button.set_image_position(gtk.POS_TOP)
+            self.pack_start(button, False)
+            
+            button.connect('clicked', self.cancel)
+            
+        def resolve(self, button):
+            'Resolve releases for the selected tracks.'
+            model, rows = Window.instance.tracks.get_selection().get_selected_rows()
+            
+            if not rows:
+                rows = range(0, len(model))
+                
+            for row in rows:
+                track = Window.instance.controller.get_track(model[row][0])
+                if not track.release:
+                    Window.instance.controller.get_release(track, self.resolve_cb, (model, row))
+        
+        def resolve_cb(self, track, release, data):
+            (model, row) = data
+            if release:
+                model[row][3] = str(release)
+            
+        def cancel(self, button):
+            Window.instance.controller.cancel()
     
     class Playlists(gtk.TreeView):
         'The playlists tree view.'
@@ -182,8 +222,11 @@ class Window(gtk.Window):
         'The tracks tree view.'
         def __init__(self):
             super(Window.Tracks, self).__init__(gtk.ListStore(int, str, str, str))
+            
             self.modify_font(pango.FontDescription('8'))
             self.set_rules_hint(True)
+            
+            self.get_selection().set_mode(gtk.SELECTION_MULTIPLE)            
             
             renderer = gtk.CellRendererText()
             
@@ -208,32 +251,12 @@ class Window(gtk.Window):
             column.set_resizable(True)
             column.set_sort_column_id(3)
             self.append_column(column)
-            
-            self.connect('cursor-changed', self.get_release)
-                            
+                                        
         def add_track(self, track):
             rel = None
             if track.release:
                 rel = str(track.release)
             self.get_model().append((track.TrackID, track.Artist, track.Name, rel))
-            
-        def get_release(self, view):
-            model, it = self.get_selection().get_selected()
-            tid = model.get_value(it, 0)
-            
-            track = Window.instance.controller.get_track(tid)
-            
-            if not track.release:
-                Window.instance.status.set_status('Resolving release for %s..' % track)
-                Window.instance.controller.get_release(track, self.get_release_cb, it)
-            
-        def get_release_cb(self, track, release, it):
-            if not release:
-                Window.instance.status.set_status('%s Not found' % track)
-                return
-            
-            self.get_model().set_value(it, 3, str(release))
-            Window.instance.status.set_status(str(release))
     
     class Status(gtk.HBox):
         'The status bar.'
@@ -265,17 +288,21 @@ class Window(gtk.Window):
         
         self.menu = Window.Menu()
         vbox.pack_start(self.menu, False)
+        
+        self.controls = Window.Controls()
+        vbox.pack_start(self.controls, False)
+        
+        hbox.pack_start(gtk.VSeparator(), False)
 
         self.playlists = Window.Playlists()
         
         scrollable = gtk.ScrolledWindow()
         scrollable.set_size_request(200, 600)
-        scrollable.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scrollable.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
         scrollable.add(self.playlists)
         hbox.pack_start(scrollable, False)
         
-        separator = gtk.VSeparator()
-        hbox.pack_start(separator, False)
+        hbox.pack_start(gtk.VSeparator(), False)
         
         self.tracks = Window.Tracks()
         
@@ -286,20 +313,24 @@ class Window(gtk.Window):
         hbox.pack_end(scrollable)
         
         vbox.pack_start(hbox)
-        vbox.pack_start(gtk.HSeparator())
+        vbox.pack_start(gtk.HSeparator(), False)
         
         self.status = Window.Status()
-        vbox.pack_end(self.status, False, False, 2)
+        vbox.pack_end(self.status, False)
         
         self.add(vbox)
         
+        self.show_all()
+
         playlists = set(self.controller.get_playlists().values())
         for playlist in sorted(playlists, Playlist.compare):
             self.playlists.add_playlist(playlist)
+            
+        self.playlists.get_selection().select_path(0)
+        self.playlists.load_playlist(self.playlists)
         
-        self.show_all()
         gtk.main()
-        
+
     def destroy(self, widget, data=None):
         Window.instance = None
         gtk.main_quit()
