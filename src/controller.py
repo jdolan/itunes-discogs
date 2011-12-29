@@ -28,8 +28,8 @@ class Controller:
             while self.live:
                 while self.work:
                     (track, callback, data) = self.controller.queue.get()
-                    release = self.controller._get_release(track)
-                    gobject.idle_add(callback, track, release, data)
+                    self.controller._get_release(track)
+                    gobject.idle_add(callback, track, data)
                 time.sleep(0.1)
                 
     def __init__(self, arguments):
@@ -62,12 +62,14 @@ class Controller:
         print cmd
         #self.itunes.tell(cmd)
         
-    def _get_release(self, track, callback=None, data=None):
-        'Dispatch release resolution, storing results in the database.'
-        release = self.discogs.get_release(track.Artist, track.Name)
-        if release:
-            self.set_bundle(track.PersistentID, release)
-        return release
+    def _get_release(self, track):
+        'Search storing results in the database.'
+        track.search = self.discogs.search(track.Artist, track.Name)
+        if track.search:
+            self.set_bundle('%s.search' % track.PersistentID, track.search)
+            if track.search.results():
+                track.release = self.discogs.release(track.search.results()[0])
+                self.set_bundle('%s.release' % track.PersistentID, track.release)
         
     def get_release(self, track, callback=None, data=None):
         'Common entry point for resolving releases information.'
@@ -75,7 +77,7 @@ class Controller:
             self.queue.put((track, callback, data))
             self.worker.work = True
         else:
-            return self._get_release(track)
+            self._get_release(track)
             
     def process_playlist(self, playlist):
         'Resolve releases for the specified playlist.'

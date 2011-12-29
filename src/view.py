@@ -156,13 +156,12 @@ class Window(gtk.Window):
         def __init__(self):
             super(Window.Controls, self).__init__()
                         
-            button = gtk.Button('_Resolve')
-            button.set_image(gtk.image_new_from_stock(gtk.STOCK_CONNECT, gtk.ICON_SIZE_BUTTON))
+            button = gtk.Button('_Find', gtk.STOCK_FIND)
             button.set_size_request(64, 48)
             button.set_image_position(gtk.POS_TOP)
             self.pack_start(button, False)
             
-            button.connect('clicked', self.resolve)
+            button.connect('clicked', self.find)
             
             button = gtk.Button('Cancel', gtk.STOCK_CANCEL)
             button.set_size_request(64, 48)
@@ -171,22 +170,21 @@ class Window(gtk.Window):
             
             button.connect('clicked', self.cancel)
             
-        def resolve(self, button):
-            'Resolve releases for the selected tracks.'
+        def find(self, button):
+            'Resolve search results for the selected tracks.'
             model, rows = Window.instance.tracks.get_selection().get_selected_rows()
-            
             if not rows:
                 rows = range(0, len(model))
                 
             for row in rows:
                 track = Window.instance.controller.get_track(model[row][0])
                 if not track.release:
-                    Window.instance.controller.get_release(track, self.resolve_cb, (model, row))
+                    Window.instance.controller.get_release(track, self.find_cb, (model, row))
         
-        def resolve_cb(self, track, release, data):
+        def find_cb(self, track, data):
             (model, row) = data
-            if release:
-                model[row][3] = str(release)
+            if track.release:
+                model[row][3] = str(track.release)
             
         def cancel(self, button):
             Window.instance.controller.cancel()
@@ -242,21 +240,42 @@ class Window(gtk.Window):
             column.set_sort_column_id(2)
             self.append_column(column)
             
-            renderer = gtk.CellRendererText()
+            renderer = gtk.CellRendererCombo()
             renderer.set_property('foreground', 'blue')
             renderer.set_property('underline', pango.UNDERLINE_SINGLE)
+            renderer.set_property('editable', True)
+            renderer.set_property('has-entry', False)
+            renderer.set_property('model', gtk.ListStore(str))
+            renderer.set_property('text-column', 0)
+            renderer.connect('editing-started', self.load_results)
+            renderer.connect('edited', self.select_result)            
             
             column = gtk.TreeViewColumn('Release', renderer, text=3)
             column.set_min_width(200)
             column.set_resizable(True)
-            column.set_sort_column_id(3)
             self.append_column(column)
-                                        
+                                                    
         def add_track(self, track):
-            rel = None
+            release = None
             if track.release:
-                rel = str(track.release)
-            self.get_model().append((track.TrackID, track.Artist, track.Name, rel))
+                release = str(track.release)
+            self.get_model().append((track.TrackID, track.Artist, track.Name, release))
+            
+        def load_results(self, renderer, editable, path):
+            tid = self.get_model()[path][0]
+            track = Window.instance.controller.get_track(tid)
+            
+            renderer = self.get_column(2).get_cell_renderers()[0]
+            
+            model = renderer.get_property('model')
+            model.clear()
+            
+            if track.search:
+                for result in track.search.raw_results:
+                    model.append((result['title'],))
+                                
+        def select_result(self, renderer, row, text, column):
+            pass
     
     class Status(gtk.HBox):
         'The status bar.'

@@ -26,7 +26,7 @@ class Track:
         if 'Year' in track:
             self.Year = track['Year']
             
-        self.release = None
+        self.search, self.release = None, None
             
     def __str__(self):
         return 'Track %s: %s - %s' % (self.TrackID, self.Artist, self.Name)
