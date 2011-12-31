@@ -1,5 +1,6 @@
 from config import Field
 from itunes import Playlist
+import async
 import config
 import gtk
 import pango
@@ -161,7 +162,7 @@ class Window(gtk.Window):
             button.set_image_position(gtk.POS_TOP)
             self.pack_start(button, False)
             
-            button.connect('clicked', self.find)
+            button.connect('clicked', self.search)
             
             button = gtk.Button('Cancel', gtk.STOCK_CANCEL)
             button.set_size_request(64, 48)
@@ -170,24 +171,38 @@ class Window(gtk.Window):
             
             button.connect('clicked', self.cancel)
             
-        def find(self, button):
+        def search(self, button):
             'Resolve search results for the selected tracks.'
             model, rows = Window.instance.tracks.get_selection().get_selected_rows()
             if not rows:
                 rows = range(0, len(model))
                 
+            controller = Window.instance.controller
+            
             for row in rows:
-                track = Window.instance.controller.get_track(model[row][0])
+                track = controller.get_track(model[row][0])
                 if not track.release:
-                    Window.instance.controller.get_release(track, self.find_cb, (model, row))
+                    async.run(controller.search, (track,), self.search_cb, (model, row))
         
-        def find_cb(self, track, data):
+        def search_cb(self, track, data):
+            #print track.release.data
+            if track.search and track.search.raw_results and track.release:
+                result = track.search.raw_results[0]
+                self.set_release_cb(track, result, data)
+                
+        def set_release(self, track, result):
+            model, rows = Window.instance.tracks.get_selection().get_selected_rows()
+            
+            controller = Window.instance.controller
+            async.run(controller.set_release, (track, result), self.set_release_cb, (model, rows[0]))
+                
+        def set_release_cb(self, track, result, data):
             (model, row) = data
             if track.release:
                 model[row][3] = str(track.release)
             
         def cancel(self, button):
-            Window.instance.controller.cancel()
+            async.abort()
     
     class Playlists(gtk.TreeView):
         'The playlists tree view.'
@@ -272,9 +287,11 @@ class Window(gtk.Window):
             
             if track.search:
                 for result in track.search.raw_results:
-                    model.append((result['title'],))
+                    model.append((str(result),))
                                 
-        def select_result(self, renderer, row, text, column):
+        def select_result(self, renderer, row, text):
+            print row
+            print text
             pass
     
     class Status(gtk.HBox):
@@ -289,7 +306,7 @@ class Window(gtk.Window):
             self.status.set_text(text)
     
     def __init__(self, controller):
-        'Instantiates the main window.'
+        'Instantiates the main window.'        
         super(Window, self).__init__(gtk.WINDOW_TOPLEVEL)
                 
         self.controller = controller
@@ -352,5 +369,6 @@ class Window(gtk.Window):
 
     def destroy(self, widget, data=None):
         Window.instance = None
+        async.shutdown()
         gtk.main_quit()
         

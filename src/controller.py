@@ -1,6 +1,5 @@
 #!/usr/bin/python
 
-from Queue import Queue
 from config import Config
 from discogs import Discogs
 from itunes import iTunes
@@ -8,38 +7,16 @@ from model import Model
 from view import Window
 import argparse
 import config
-import gobject
-import threading
-import time
 
 class Controller:
-    'The controller implements all application logic.'
-    
-    class Worker(threading.Thread):
-        'The worker thread enabling asynchronous requests.'
-        def __init__(self, controller):
-            gobject.threads_init()
-            super(Controller.Worker, self).__init__()
-            self.controller = controller
-            self.daemon, self.live, self.work = True, True, True
-            self.start()
-            
-        def run(self):
-            while self.live:
-                while self.work:
-                    (track, callback, data) = self.controller.queue.get()
-                    self.controller._get_release(track)
-                    gobject.idle_add(callback, track, data)
-                time.sleep(0.1)
-                
+    'The controller implements all application logic.'         
     def __init__(self, arguments):
         'Main entry point for iTunes-Discogs.'
         self.arguments = arguments
-        
-        self.config = Config(arguments.home)      
-        self.itunes = iTunes(arguments.library)
-        self.model = Model(self.config, arguments.database, self.get_tracks())
-        self.discogs, self.queue = Discogs(), Queue()
+        self.config = Config(arguments.home)
+        self.model = Model(self.config, arguments.database)
+        self.itunes = iTunes(self.model, arguments.library)
+        self.discogs = Discogs(self.model, arguments.junk)
                 
         if arguments.cli:
             if not arguments.playlist:
@@ -47,56 +24,37 @@ class Controller:
                 
             for playlist in self.get_playlists().values():
                 if playlist.Name == arguments.playlist:
-                    self.process_playlist(playlist)
+                    self._process_playlist(playlist)
         else:
-            self.worker = Controller.Worker(self)
             Window(self)
             
         self.shutdown()
-    
-    def update_track(self, track, fields):
-        'Back release information into iTunes.'
-        cmd = 'set t to track 1 of playlist "Library" whose persistent ID is "%s"' % track.PersistentID
-        cmd += ''.join(['set %s of t to %s' % (f, v) for (f, v) in fields])
         
-        print cmd
-        #self.itunes.tell(cmd)
-        
-    def _get_release(self, track):
+    def search(self, track):
         'Search storing results in the database.'
         track.search = self.discogs.search(track.Artist, track.Name)
         if track.search:
-            self.set_bundle('%s.search' % track.PersistentID, track.search)
-            if track.search.results():
-                track.release = self.discogs.release(track.search.results()[0])
-                self.set_bundle('%s.release' % track.PersistentID, track.release)
-        
-    def get_release(self, track, callback=None, data=None):
-        'Common entry point for resolving releases information.'
-        if callback:
-            self.queue.put((track, callback, data))
-            self.worker.work = True
-        else:
-            self._get_release(track)
+            self.model.set_bundle('track.search', track.PersistentID, track.search._id)
+            if track.search.raw_results and not track.release:
+                self.set_release(track, track.search.raw_results[0])
             
-    def process_playlist(self, playlist):
+    def set_release(self, track, result):
+        'Sets the track release to the specified result.'
+        track.release = self.discogs.get_release(result)
+        if track.release:
+            self.model.set_bundle('track.release', track.PersistentID, track.release._id)
+             
+    def _process_playlist(self, playlist):
         'Resolve releases for the specified playlist.'
         for tid in playlist.Items:
             track = self.get_track(tid)
             if not track.release:
-                track.release = self.get_release(track)
+                self.search(track)
+                if track.search and track.search.results():
+                    self.set_release(track, track.search.results()[0])
                 
-    def cancel(self):
-        'Cancel all pending asynchronous requests.'
-        self.worker.work = False
-        while not self.queue.empty():
-            self.queue.get()
-           
     def shutdown(self):
         'Shutdown the worker thread and flush the database.'
-        self.worker.live = self.worker.work = False
-        self.worker.join()
-        
         self.model.flush(self.arguments.database)
         
     def get_tracks(self):
@@ -110,18 +68,6 @@ class Controller:
         
     def get_playlist(self, pid):
         return self.get_playlists()[pid]
-    
-    def get_bundles(self):
-        return self.model.bundles
-    
-    def get_bundle(self, bid):
-        return self.get_bundles()[bid]
-    
-    def set_bundle(self, bid, data):
-        self.model.bundles[bid] = data
-        
-    def del_bundle(self, bid):
-        del self.model.bundles[bid]
         
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -135,6 +81,9 @@ if __name__ == '__main__':
     )
     parser.add_argument('-g', action='store', dest='home',
         help='The home directory to store configuration and databases.'
+    )
+    parser.add_argument('-j', action='store', default='', dest='junk',
+        help='Junk terms to exclude from search queries.'
     )
     parser.add_argument('-l', action='store', dest='library',
         help='The iTunes Library filename. If omitted, the default location for the current user is tried.',

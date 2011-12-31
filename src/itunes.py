@@ -1,7 +1,6 @@
 
 from os.path import expanduser
 from plistlib import readPlist
-
 import subprocess
 
 class Track:
@@ -85,12 +84,28 @@ class Library:
             
 class iTunes:
     
-    def __init__(self, library=None):
-        self.library = Library(library)
-        
+    def __init__(self, model, library=None):
+        self.model, self.library = model, Library(library)            
         self.bridge = subprocess.Popen(['osascript', '-'], shell=False, stdin=subprocess.PIPE)
         
-    def tell(self, cmd):
+        for track in self.library.tracks.values():
+            search = self.model.get_bundle('track.search', track.PersistentID)
+            if search:
+                track.search = self.model.get_bundle('search', search)
+                
+            release = self.model.get_bundle('track.release', track.PersistentID)
+            if release:
+                track.release = self.model.get_bundle('release', release)
+    
+    def update_track(self, track, fields):
+        'Back release information into iTunes.'
+        cmd = 'set t to track 1 of playlist "Library" whose persistent ID is "%s"' % track.PersistentID
+        cmd += ''.join(['set %s of t to %s' % (f, v) for (f, v) in fields])
+        
+        print cmd
+        #self._tell(cmd)
+        
+    def _tell(self, cmd):
         self.bridge.communicate(
             """
             tell application "itunes"
