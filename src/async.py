@@ -11,6 +11,7 @@ class Thread(threading.Thread):
         self.shutdown = False
         
     def run(self):
+        'For each iteration of the main loop, take some work from the queue.'
         while not self.shutdown:
             try:
                 (function, arguments, callback, data) = queue.get(True, 0.01)
@@ -23,7 +24,7 @@ class Thread(threading.Thread):
 
 queue, thread = Queue(), Thread()
                 
-def run(function, arguments, callback, data):
+def run(function, arguments, callback, data=None):
     '''Entry point for asynchronous method invocations. The callback
     signature should take the same arguments as the target function, and
     additionally take the optional 'data' parameter.'''
@@ -31,15 +32,4 @@ def run(function, arguments, callback, data):
     
     if not thread.is_alive():
         thread.start()
-    
-def abort():
-    'Flush the queue of any pending method invocations.'
-    while not queue.empty():
-        queue.get()
-        
-def shutdown():
-    'Stop the thread, waiting for it to terminate cleanly.'
-    if thread.is_alive():
-        thread.shutdown = True
-        thread.join()
     

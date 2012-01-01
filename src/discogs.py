@@ -89,7 +89,7 @@ class Discogs:
         self.junk = [
             'a', 'feat', 'featuring', 'ft',
             'original', 'pres', 'presents', 
-            'mix', 'remix', 'vs'
+            'mix', 'mp3', 'remix', 'vs'
         ] + junk.split(' ')
     
     def _get_query(self, artist, title):

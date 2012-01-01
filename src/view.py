@@ -157,19 +157,19 @@ class Window(gtk.Window):
         def __init__(self):
             super(Window.Controls, self).__init__()
                         
-            button = gtk.Button('_Find', gtk.STOCK_FIND)
-            button.set_size_request(64, 48)
-            button.set_image_position(gtk.POS_TOP)
-            self.pack_start(button, False)
+            self.search_button = gtk.Button('_Find', gtk.STOCK_FIND)
+            self.search_button.set_size_request(64, 48)
+            self.search_button.set_image_position(gtk.POS_TOP)
+            self.pack_start(self.search_button, False)
             
-            button.connect('clicked', self.search)
+            self.search_button.connect('clicked', self.search)
             
-            button = gtk.Button('Cancel', gtk.STOCK_CANCEL)
-            button.set_size_request(64, 48)
-            button.set_image_position(gtk.POS_TOP)
-            self.pack_start(button, False)
+            self.cancel_button = gtk.Button('Cancel', gtk.STOCK_CANCEL)
+            self.cancel_button.set_size_request(64, 48)
+            self.cancel_button.set_image_position(gtk.POS_TOP)
+            self.pack_start(self.cancel_button, False)
             
-            button.connect('clicked', self.cancel)
+            self.cancel_button.connect('clicked', self.cancel)
             
         def search(self, button):
             'Resolve search results for the selected tracks.'
@@ -202,7 +202,8 @@ class Window(gtk.Window):
                 model[row][3] = str(track.release)
             
         def cancel(self, button):
-            async.abort()
+            while not async.queue.empty():
+                async.queue.get()
     
     class Playlists(gtk.TreeView):
         'The playlists tree view.'
@@ -260,10 +261,10 @@ class Window(gtk.Window):
             renderer.set_property('underline', pango.UNDERLINE_SINGLE)
             renderer.set_property('editable', True)
             renderer.set_property('has-entry', False)
-            renderer.set_property('model', gtk.ListStore(str))
-            renderer.set_property('text-column', 0)
+            renderer.set_property('model', gtk.ListStore(int, str))
+            renderer.set_property('text-column', 1)
             renderer.connect('editing-started', self.load_results)
-            renderer.connect('edited', self.select_result)            
+            renderer.connect('changed', self.select_result)            
             
             column = gtk.TreeViewColumn('Release', renderer, text=3)
             column.set_min_width(200)
@@ -271,12 +272,14 @@ class Window(gtk.Window):
             self.append_column(column)
                                                     
         def add_track(self, track):
+            'Append a track to the tree model.'
             release = None
             if track.release:
                 release = str(track.release)
             self.get_model().append((track.TrackID, track.Artist, track.Name, release))
             
         def load_results(self, renderer, editable, path):
+            'The user wishes to see search results. Populate the the drop-down.'
             tid = self.get_model()[path][0]
             track = Window.instance.controller.get_track(tid)
             
@@ -286,14 +289,29 @@ class Window(gtk.Window):
             model.clear()
             
             if track.search:
+                i = 0
                 for result in track.search.raw_results:
-                    model.append((str(result),))
+                    model.append((i, str(result)))
+                    i += 1
                                 
-        def select_result(self, renderer, row, text):
-            print row
-            print text
-            pass
+        def select_result(self, renderer, path, it):
+            'A search result was selected. Resolve the release.'
+            controller = Window.instance.controller
+            
+            tid = self.get_model()[path][0]
+            track = controller.get_track(tid)
+            
+            model = renderer.get_property('model')
+            i = model.get_value(it, 0)
+            result = track.search.raw_results[i]
+            
+            async.run(controller.set_release, (track, result), self.select_result_cb, path)
     
+        def select_result_cb(self, track, result, path):
+            'Update the release information for the track.'
+            if track.release:
+                self.get_model()[path][3] = str(track.release)
+                
     class Status(gtk.HBox):
         'The status bar.'
         def __init__(self):
@@ -365,10 +383,25 @@ class Window(gtk.Window):
         self.playlists.get_selection().select_path(0)
         self.playlists.load_playlist(self.playlists)
         
+        gtk.timeout_add(100, self.frame)
+        
         gtk.main()
+        
+    def frame(self):
+        'Enable or disable the primary widgets based on work.'
+        sensitive = async.queue.empty()
+        
+        self.controls.search_button.set_sensitive(sensitive)
+        self.playlists.set_sensitive(sensitive)
+        self.tracks.set_sensitive(sensitive)
+        
+        return True
 
     def destroy(self, widget, data=None):
+        'Destroy the window and any resources it holds.'
+        if async.thread.is_alive():
+            async.thread.shutdown = True
+            async.thread.join()
         Window.instance = None
-        async.shutdown()
         gtk.main_quit()
         
