@@ -56,7 +56,7 @@ class Preferences(gtk.Dialog):
             renderer.set_property('model', actions)
             renderer.set_property('text-column', 0)
             renderer.connect('edited', self.edit, 3)
-            
+                        
             column = gtk.TreeViewColumn('Action', renderer, text=3)
             self.append_column(column)
             
@@ -185,23 +185,17 @@ class Window(gtk.Window):
                     async.run(controller.search, (track,), self.search_cb, (model, row))
         
         def search_cb(self, track, data):
-            #print track.release.data
-            if track.search and track.search.raw_results and track.release:
-                result = track.search.raw_results[0]
-                self.set_release_cb(track, result, data)
-                
-        def set_release(self, track, result):
-            model, rows = Window.instance.tracks.get_selection().get_selected_rows()
-            
-            controller = Window.instance.controller
-            async.run(controller.set_release, (track, result), self.set_release_cb, (model, rows[0]))
-                
-        def set_release_cb(self, track, result, data):
+            'A release will be set for successful searches.'
             (model, row) = data
             if track.release:
                 model[row][3] = str(track.release)
+            else:
+                model[row][3] = 'Not found'
+                
+            Window.instance.status.set_status('Processed %s' % track)
             
         def cancel(self, button):
+            'Cancel any pending work.'
             while not async.queue.empty():
                 async.queue.get()
     
@@ -263,7 +257,7 @@ class Window(gtk.Window):
             renderer.set_property('has-entry', False)
             renderer.set_property('model', gtk.ListStore(int, str))
             renderer.set_property('text-column', 1)
-            renderer.connect('editing-started', self.load_results)
+            renderer.connect('editing-started', self.show_results)
             renderer.connect('changed', self.select_result)            
             
             column = gtk.TreeViewColumn('Release', renderer, text=3)
@@ -278,7 +272,7 @@ class Window(gtk.Window):
                 release = str(track.release)
             self.get_model().append((track.TrackID, track.Artist, track.Name, release))
             
-        def load_results(self, renderer, editable, path):
+        def show_results(self, renderer, editable, path):
             'The user wishes to see search results. Populate the the drop-down.'
             tid = self.get_model()[path][0]
             track = Window.instance.controller.get_track(tid)
@@ -317,11 +311,18 @@ class Window(gtk.Window):
         def __init__(self):
             super(Window.Status, self).__init__()
             
-            self.status = gtk.Label('')    
+            self.status = gtk.Label('')
             self.pack_start(self.status)
+            
+            self.progress = gtk.ProgressBar()
+            self.progress.set_size_request(250, 16)
+            self.pack_end(self.progress, False, padding=16)
                                             
         def set_status(self, text):
             self.status.set_text(text)
+            
+        def set_progress(self, frac):
+            self.progress.set_fraction(frac)
     
     def __init__(self, controller):
         'Instantiates the main window.'        
@@ -370,7 +371,7 @@ class Window(gtk.Window):
         vbox.pack_start(gtk.HSeparator(), False)
         
         self.status = Window.Status()
-        vbox.pack_end(self.status, False)
+        vbox.pack_end(self.status, False, padding=1)
         
         self.add(vbox)
         
@@ -383,17 +384,29 @@ class Window(gtk.Window):
         self.playlists.get_selection().select_path(0)
         self.playlists.load_playlist(self.playlists)
         
+        self.queue_size = 0
+        
         gtk.timeout_add(100, self.frame)
         
         gtk.main()
         
     def frame(self):
-        'Enable or disable the primary widgets based on work.'
+        'Update widget state based on pending workload.'
         sensitive = async.queue.empty()
         
         self.controls.search_button.set_sensitive(sensitive)
         self.playlists.set_sensitive(sensitive)
         self.tracks.set_sensitive(sensitive)
+        
+        if not async.queue.empty():
+            size = async.queue.qsize()
+            if size > self.queue_size:
+                self.queue_size = size
+            frac = 1.0 - size / float(self.queue_size)
+        else:
+            self.queue_size, frac = 0, 0.0
+        
+        self.status.set_progress(frac)
         
         return True
 

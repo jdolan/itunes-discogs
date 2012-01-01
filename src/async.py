@@ -17,7 +17,9 @@ class Thread(threading.Thread):
                 (function, arguments, callback, data) = queue.get(True, 0.01)
             except Empty:
                 continue
+            
             function(*arguments)
+            
             cb_arguments = list(arguments)
             cb_arguments.append(data)
             gtk.idle_add(callback, *cb_arguments)
