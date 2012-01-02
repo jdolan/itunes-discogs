@@ -5,21 +5,21 @@ discogs.user_agent = 'iTunes-Discogs/1.0 +http://jdolan.dyndns.org'
 class Serializable(object):
     'A proxy for discogs_client data types providing safe serialization.'
     def __init__(self, delegate):
-        self.delegate = delegate
-        self.delegate.data
+        self._delegate = delegate
+        self._delegate.data
         
     def __getattr__(self, name):
-        return getattr(self.delegate, name)
+        return getattr(self._delegate, name)
     
     def __getstate__(self):
         return {
-            '_type': self.delegate._uri_name,
-            '_id': self.delegate._id,
-            'content': self.delegate._cached_response.content
+            '_type': self._delegate._uri_name,
+            '_id': self._delegate._id,
+            'content': self._delegate._cached_response.content
         }
         
     def __setstate__(self, state):
-        self.delegate = self._delegate_instance(
+        self._delegate = self._delegate_instance(
             state['_type'], state['_id'], state['content']
         )
         
@@ -44,6 +44,14 @@ class Serializable(object):
 
 class Search(Serializable):
     'A proxy class for discogs_client Search.'
+    def __init__(self, delegate):
+        super(Search, self).__init__(delegate)
+        self._raw_results = []
+        
+    def __setstate__(self, state):
+        super(Search, self).__setstate__(state)
+        self._raw_results = []
+        
     class RawResult:
         'A proxy for search results, allowing lazy-loading of key attributes.'
         def __init__(self, data):
@@ -65,12 +73,17 @@ class Search(Serializable):
             return Serializable._delegate_instance(self._type, self._id)
          
         def __str__(self):
-            return '%s: %s' % (self._id, self.title)
+            m = '*' if self._type == 'master' else ''
+            return '%s%s: %s' % (m, self._id, self.title)
     
     @property
-    def raw_results(self): 
-        return [Search.RawResult(r) for r in self.data['searchresults']['results']]
-        
+    def raw_results(self):
+        if not self._raw_results:
+            for r in self.data['searchresults']['results']:
+                if r['type'] in ['release', 'master']:
+                    self._raw_results.append(Search.RawResult(r))
+        return self._raw_results
+    
 class Release(Serializable):
     'A proxy for discogs_client Release.'
     @property
@@ -78,8 +91,9 @@ class Release(Serializable):
         return self.data['year']
     
     def __str__(self):
+        m = '*' if isinstance(self._delegate, discogs.MasterRelease) else ''
         artists = ', '.join([a['name'] for a in self.data.get('artists', [])])
-        return '%s: %s - %s (%d)' % (self._id, artists, self.title, self.year)
+        return '%s%s: %s - %s (%d)' % (m, self._id, artists, self.title, self.year)
     
 class Discogs:
     'A facade for discogs_client exposing convenient search and release lookup.'
@@ -121,13 +135,5 @@ class Discogs:
         if not release:
             if isinstance(result, Search.RawResult):
                 result = result.to_object()
-                
-            if isinstance(result, discogs.Release):
-                release = Release(result)
-            
-            if isinstance(result, discogs.MasterRelease):
-                release = Release(result.key_release)
-                                            
-            for _id in set([result._id, release._id]):
-                self.model.set_bundle('release', _id, release)
+            release = Release(result)
         return release
